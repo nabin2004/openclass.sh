@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>openClass.sh — research engineering from the underdog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:       #080808;
+    --surface:  #0f0f0f;
+    --border:   #1a1a1a;
+    --green:    #00ff88;
+    --green-dim:#00cc66;
+    --green-glow: rgba(0,255,136,0.12);
+    --amber:    #ffb800;
+    --red:      #ff4444;
+    --fg:       #c8c8c8;
+    --fg-dim:   #555;
+    --fg-muted: #333;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.7;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* ── scanline overlay ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── noise texture ── */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9998;
+    opacity: 0.4;
+  }
+
+  /* ── grid bg ── */
+  .grid-bg {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── layout ── */
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ── nav ── */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 1px solid var(--border);
+    background: rgba(8,8,8,0.92);
+    backdrop-filter: blur(12px);
+  }
+
+  nav .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+  }
+
+  .nav-logo {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--green);
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 28px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    color: var(--fg-dim);
+    text-decoration: none;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--green); }
+
+  /* ── hero ── */
+  .hero {
+    padding: 100px 0 80px;
+    text-align: center;
+  }
+
+  .hero-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 24px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.1s forwards;
+  }
+
+  .hero-title {
+    font-family: var(--sans);
+    font-size: clamp(36px, 6vw, 72px);
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    margin-bottom: 20px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.2s forwards;
+  }
+
+  .hero-title .accent { color: var(--green); }
+
+  .hero-sub {
+    font-size: 13px;
+    color: var(--fg-dim);
+    max-width: 480px;
+    margin: 0 auto 48px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.3s forwards;
+  }
+
+  /* ── terminal block ── */
+  .terminal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    max-width: 580px;
+    margin: 0 auto 16px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.4s forwards;
+    box-shadow: 0 0 40px rgba(0,255,136,0.06), 0 0 80px rgba(0,0,0,0.6);
+  }
+
+  .terminal-bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: #0d0d0d;
+  }
+
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot.r { background: var(--red); }
+  .dot.y { background: var(--amber); }
+  .dot.g { background: var(--green); }
+
+  .terminal-title {
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-left: auto;
+    margin-right: auto;
+    letter-spacing: 0.05em;
+  }
+
+  .terminal-body {
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .terminal-cmd {
+    font-size: 13px;
+    color: var(--green);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .terminal-prompt {
+    color: var(--fg-dim);
+    margin-right: 4px;
+    user-select: none;
+  }
+
+  .copy-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+
+  .copy-btn:hover {
+    border-color: var(--green);
+    color: var(--green);
+    box-shadow: 0 0 12px var(--green-glow);
+  }
+
+  .copy-btn.copied {
+    border-color: var(--green);
+    color: var(--green);
+  }
+
+  .hero-note {
+    font-size: 11px;
+    color: var(--fg-muted);
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.5s forwards;
+  }
+
+  .blink {
+    animation: blink 1s step-end infinite;
+    color: var(--green);
+  }
+
+  /* ── section ── */
+  section { padding: 80px 0; }
+
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 40px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── project cards ── */
+  .projects { display: flex; flex-direction: column; gap: 1px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 28px 28px 24px;
+    transition: border-color 0.25s, box-shadow 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 2px;
+    height: 100%;
+    background: var(--green);
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: transform 0.3s ease;
+  }
+
+  .card:hover {
+    border-color: #2a2a2a;
+    box-shadow: 0 0 30px var(--green-glow);
+  }
+
+  .card:hover::before { transform: scaleY(1); }
+
+  .card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 10px;
+  }
+
+  .card-name {
+    font-family: var(--sans);
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.02em;
+  }
+
+  .card-tag {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .card-tag.core {
+    border-color: rgba(0,255,136,0.3);
+    color: var(--green);
+    background: rgba(0,255,136,0.05);
+  }
+
+  .card-desc {
+    color: var(--fg-dim);
+    font-size: 12.5px;
+    line-height: 1.65;
+    margin-bottom: 20px;
+    max-width: 540px;
+  }
+
+  .card-cmd {
+    background: #0d0d0d;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--green-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .card-cmd span { flex: 1; }
+  .card-cmd .prompt { color: var(--fg-muted); }
+
+  .card-links {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .card-link {
+    font-size: 11px;
+    color: var(--fg-dim);
+    text-decoration: none;
+    letter-spacing: 0.05em;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .card-link:hover { color: var(--green); }
+
+  .card-link svg { opacity: 0.6; }
+
+  /* ── how it works ── */
+  .steps { display: flex; flex-direction: column; gap: 0; }
+
+  .step {
+    display: flex;
+    gap: 20px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .step:last-child { border-bottom: none; }
+
+  .step-num {
+    font-size: 11px;
+    color: var(--green);
+    letter-spacing: 0.1em;
+    width: 28px;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+
+  .step-content h4 {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+
+  .step-content p {
+    font-size: 12px;
+    color: var(--fg-dim);
+    line-height: 1.6;
+  }
+
+  .step-content code {
+    color: var(--green-dim);
+    background: #0d0d0d;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+
+  /* ── footer ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 0;
+  }
+
+  footer .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .footer-brand {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--green);
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 20px;
+    list-style: none;
+  }
+
+  .footer-links a {
+    color: var(--fg-dim);
+    text-decoration: none;
+    font-size: 12px;
+    transition: color 0.2s;
+  }
+
+  .footer-links a:hover { color: var(--green); }
+
+  .footer-copy {
+    font-size: 11px;
+    color: var(--fg-muted);
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  /* ── divider ── */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0;
+  }
+
+  /* ── animations ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 20px var(--green-glow); }
+    50% { box-shadow: 0 0 40px rgba(0,255,136,0.2); }
+  }
+
+  .terminal { animation: fadeUp 0.6s ease 0.4s forwards, glow-pulse 3s ease 1s infinite; }
+
+  /* ── responsive ── */
+  @media (max-width: 600px) {
+    .hero { padding: 60px 0 50px; }
+    .card-top { flex-direction: column; gap: 8px; }
+    footer .wrap { flex-direction: column; align-items: flex-start; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<!-- nav -->
+<nav>
+  <div class="wrap">
+    <a class="nav-logo" href="#">openclass.sh</a>
+    <ul class="nav-links">
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="https://github.com/nabin2004" target="_blank">GitHub</a></li>
+      <li><a href="https://huggingface.co/nabin2004" target="_blank">HuggingFace</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- hero -->
+<div class="wrap">
+  <section class="hero" id="install">
+    <p class="hero-eyebrow">research engineering · kathmandu → everywhere</p>
+    <h1 class="hero-title">
+      Build with<br />
+      <span class="accent">openClass.sh</span>
+    </h1>
+    <p class="hero-sub">
+      One command. Dagestan + Manimator + the MVP frontend — fully containerised, fully running. Powered by openClass.sh.
+    </p>
+
+    <div class="terminal">
+      <div class="terminal-bar">
+        <span class="dot r"></span>
+        <span class="dot y"></span>
+        <span class="dot g"></span>
+        <span class="terminal-title">bash — 80×24</span>
+      </div>
+      <div class="terminal-body">
+        <span class="terminal-cmd">
+          <span class="terminal-prompt">$ </span>curl -fsSL https://nabin2004.sh | bash
+        </span>
+        <button class="copy-btn" id="copyBtn" onclick="copyCmd()">copy</button>
+      </div>
+    </div>
+
+    <p class="hero-note">
+      requires git + docker &nbsp;·&nbsp; works on linux &amp; macOS &nbsp;<span class="blink">▋</span>
+    </p>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- projects -->
+  <section id="projects">
+    <p class="section-label">// projects</p>
+    <div class="projects">
+
+      <div class="card">
+        <div class="card-top">
+          <span class="card-name">Manimator MVP</span>
+          <span class="card-tag core">frontend · core</span>
+        </div>
+        <p class="card-desc">
+          The unified interface for the nabin2004 stack. Runs the full system via Docker Compose —
+          Manimator backend, Dagestan memory layer, and the web UI, all wired together in one container network.
+        </p>
+        <div class="card-cmd">
+          <span><span class="prompt">$ </span>git clone https://github.com/nabin2004/manimator-mvp</span>
+          <button class="copy-btn" onclick="copyText('git clone https://github.com/nabin2004/manimator-mvp', this)">copy</button>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://github.com/openclass-sh/manimator-mvp" target="_blank">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            GitHub
+          </a>
+          <a class="card-link" href="http://localhost:3000" target="_blank">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            localhost:3000
+          </a>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 12px;">
+        <div class="card-top">
+          <span class="card-name">Manimator</span>
+          <span class="card-tag">multi-agent · RL</span>
+        </div>
+        <p class="card-desc">
+          A multi-agent pipeline for generating educational Manim animations, framed as a search problem
+          with a multi-objective reward function. Uses Qwen2.5-Coder-14B with multiple LoRA adapters
+          (planning, coding, repair) and SmolVLM-2B as a frozen visual reward model.
+        </p>
+        <div class="card-cmd">
+          <span><span class="prompt">$ </span>git clone https://github.com/nabin2004/manimator</span>
+          <button class="copy-btn" onclick="copyText('git clone https://github.com/nabin2004/manimator', this)">copy</button>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://github.com/openclass-sh/manimator" target="_blank">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            GitHub
+          </a>
+          <a class="card-link" href="https://huggingface.co/nabin2004" target="_blank">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            HuggingFace
+          </a>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 12px;">
+        <div class="card-top">
+          <span class="card-name">Dagestan</span>
+          <span class="card-tag">memory · KG</span>
+        </div>
+        <p class="card-desc">
+          Temporal knowledge graph memory system for LLMs. Dynamic schema induction, temporal decay,
+          contradiction detection, and hybrid graph+vector retrieval. Ships as a PyPI package.
+          Targeting the MemAgents workshop at ICLR.
+        </p>
+        <div class="card-cmd">
+          <span><span class="prompt">$ </span>pip install dagestan</span>
+          <button class="copy-btn" onclick="copyText('pip install dagestan', this)">copy</button>
+        </div>
+        <div class="card-links">
+          <a class="card-link" href="https://github.com/openclass-sh/dagestan" target="_blank">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            GitHub
+          </a>
+          <a class="card-link" href="https://pypi.org/project/dagestan" target="_blank">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            PyPI
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- how it works -->
+  <section>
+    <p class="section-label">// what the installer does</p>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">01</span>
+        <div class="step-content">
+          <h4>Checks your environment</h4>
+          <p>Verifies <code>git</code> and <code>docker</code> are installed and the Docker daemon is running. Fails fast with a clear error if not.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">02</span>
+        <div class="step-content">
+          <h4>Clones Manimator MVP</h4>
+          <p>Clones the repo into <code>~/.nabin2004/manimator-mvp</code>. If already installed, pulls the latest changes instead.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">03</span>
+        <div class="step-content">
+          <h4>Configures your environment</h4>
+          <p>Copies <code>.env.example → .env</code> so you can drop in your API keys. Won't overwrite an existing config.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">04</span>
+        <div class="step-content">
+          <h4>Spins up the full stack</h4>
+          <p>Runs <code>docker compose up -d --build</code>. Pulls all images, builds containers, starts Manimator API, Dagestan, and the MVP frontend.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">05</span>
+        <div class="step-content">
+          <h4>Prints access URLs</h4>
+          <p>Manimator MVP UI at <code>localhost:3000</code> · Manimator API at <code>localhost:8000</code> · Dagestan at <code>localhost:8001</code></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- footer -->
+<footer>
+  <div class="wrap">
+    <span class="footer-brand">nabin2004</span>
+    <ul class="footer-links">
+      <li><a href="https://github.com/openclass-sh" target="_blank">GitHub</a></li>
+      <li><a href="https://huggingface.co/openclass-sh" target="_blank">HuggingFace</a></li>
+      <li><a href="https://arxiv.org/search/?searchtype=author&query=openClass.sh" target="_blank">arXiv</a></li>
+    </ul>
+    <p class="footer-copy">research engineering from Kathmandu &nbsp;·&nbsp; built under constraints · openClass.sh</p>
+  </div>
+</footer>
+
+<script>
+  const CMD = 'curl -fsSL https://openclass.sh | bash';
+
+  function copyCmd() {
+    copyText(CMD, document.getElementById('copyBtn'));
+  }
+
+  function copyText(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = orig;
+        btn.classList.remove('copied');
+      }, 2000);
+    }).catch(() => {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      const orig = btn.textContent;
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  // staggered card reveals on scroll
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((e, i) => {
+      if (e.isIntersecting) {
+        e.target.style.opacity = '0';
+        e.target.style.transform = 'translateY(20px)';
+        e.target.style.transition = `opacity 0.5s ease ${i * 0.1}s, transform 0.5s ease ${i * 0.1}s`;
+        requestAnimationFrame(() => {
+          e.target.style.opacity = '1';
+          e.target.style.transform = 'translateY(0)';
+        });
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.card, .step').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
